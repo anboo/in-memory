@@ -1,0 +1,25 @@
+namespace kv;
+
+enum Op : byte {
+  UNKNOWN = 0,
+  SET     = 1,
+  GET     = 2,
+  EXISTS  = 3,
+  ADD     = 4
+}
+
+table Request {
+  op:Op;
+  key:string;
+  value:[ubyte];
+  ttl_ms:uint64;
+}
+
+table Response {
+  ok:bool;
+  exists:bool;
+  value:[ubyte];
+  err:string;
+}
+
+root_type Request;
