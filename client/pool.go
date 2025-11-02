@@ -24,7 +24,7 @@ func NewPool(addr string, size int) (*Pool, error) {
 	}
 
 	for i := 0; i < size; i++ {
-		c := New(addr)
+		c := New(addr, size)
 		p.conns <- c
 	}
 

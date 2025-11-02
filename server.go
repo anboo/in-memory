@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -69,13 +70,21 @@ func (s *Server) Start() error {
 }
 
 func (s *Server) handle(conn net.Conn) {
-	defer conn.Close()
+	defer func() {
+		_ = conn.Close()
+		fmt.Println("connection closed:", conn.RemoteAddr())
+	}()
 
 	for {
 		var hdr [4]byte
 		if _, err := io.ReadFull(conn, hdr[:]); err != nil {
+			if errors.Is(err, io.EOF) {
+				return // клиент сам закрыл
+			}
+			fmt.Println("read header error:", err)
 			return
 		}
+
 		size := binary.BigEndian.Uint32(hdr[:])
 		if size == 0 {
 			continue
@@ -88,6 +97,7 @@ func (s *Server) handle(conn net.Conn) {
 		body := buf[:size]
 
 		if _, err := io.ReadFull(conn, body); err != nil {
+			fmt.Println("read body error:", err)
 			bufPool.Put(buf)
 			return
 		}
@@ -95,19 +105,17 @@ func (s *Server) handle(conn net.Conn) {
 		req := kv.GetRootAsRequest(body, 0)
 		respBytes := s.processAndBuild(req)
 
-		// Собираем header + payload в один буфер
 		totalLen := 4 + len(respBytes)
 		if cap(buf) < totalLen {
-			// если респонс больше, расширяем временно
 			buf = make([]byte, totalLen)
 		}
 		out := buf[:totalLen]
 
-		// Записываем длину и сам payload
 		binary.BigEndian.PutUint32(out[:4], uint32(len(respBytes)))
 		copy(out[4:], respBytes)
 
 		if _, err := conn.Write(out); err != nil {
+			fmt.Println("write error:", err)
 			bufPool.Put(buf)
 			return
 		}

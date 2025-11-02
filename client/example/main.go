@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"sort"
 	"sync"
@@ -11,42 +12,33 @@ import (
 )
 
 func main() {
-	const (
-		addr     = "10.173.147.170:80"
-		poolSize = 32
-		workers  = 32
-		duration = 10 * time.Second
-	)
-
-	pool, _ := client.NewPool(addr, poolSize)
-	defer pool.Close()
+	addr := flag.String("addr", "127.0.0.1:9001", "server address")
+	workers := flag.Int("workers", 32, "number of concurrent workers")
+	duration := flag.Duration("duration", 10*time.Second, "benchmark duration")
+	flag.Parse()
 
 	var totalOps int64
 	var totalTime int64
 	stop := make(chan struct{})
 	var wg sync.WaitGroup
-
-	latencies := make([]int64, 0, 1_000_000)
+	var latencies []int64
 	var latMu sync.Mutex
 
-	for i := 0; i < workers; i++ {
+	for i := 0; i < *workers; i++ {
 		wg.Add(1)
 		go func(id int) {
 			defer wg.Done()
 			key := fmt.Sprintf("key-%d", id)
 			val := []byte("payload-1234567890")
 
+			c := client.New(*addr, 10)
+			defer c.Close()
+
 			for {
 				select {
 				case <-stop:
 					return
 				default:
-				}
-
-				c, err := pool.Acquire()
-				if err != nil {
-					time.Sleep(10 * time.Millisecond)
-					continue
 				}
 
 				t0 := time.Now()
@@ -60,12 +52,11 @@ func main() {
 						latMu.Unlock()
 					}
 				}
-				pool.Release(c)
 			}
 		}(i)
 	}
 
-	time.Sleep(duration)
+	time.Sleep(*duration)
 	close(stop)
 	wg.Wait()
 
@@ -73,7 +64,6 @@ func main() {
 	avgUs := float64(totalTime) / float64(ops)
 	rps := float64(ops) / duration.Seconds()
 
-	// сортируем для процентилей
 	latMu.Lock()
 	sort.Slice(latencies, func(i, j int) bool { return latencies[i] < latencies[j] })
 	n := len(latencies)
@@ -91,7 +81,8 @@ func main() {
 	p95 := getPct(0.95)
 	p99 := getPct(0.99)
 
-	fmt.Printf("\nPool size: %d, Workers: %d, Duration: %v\n", poolSize, workers, duration)
+	fmt.Printf("\nAddress: %s\n", *addr)
+	fmt.Printf("Workers: %d, Duration: %v\n", *workers, *duration)
 	fmt.Printf("Total ops: %d\n", ops)
 	fmt.Printf("Throughput: %.0f ops/sec\n", rps)
 	fmt.Printf("Avg latency: %.2f µs (%.2f ms)\n", avgUs, avgUs/1000)
