@@ -13,8 +13,8 @@ import (
 func main() {
 	const (
 		addr     = "10.173.147.170:80"
-		poolSize = 128
-		workers  = 64
+		poolSize = 32
+		workers  = 32
 		duration = 10 * time.Second
 	)
 
